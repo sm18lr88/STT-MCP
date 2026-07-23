@@ -1,188 +1,277 @@
-# Agent Setup and Verification Runbook
+# Setup and Verification Runbook
 
-This is the authoritative setup procedure for STT-MCP. Run commands from the repository root.
-Do not claim a platform works unless its runtime checks and the real MCP acceptance test pass on
-that platform.
+This is the authoritative setup procedure for STT-MCP setup agents and contributors. Run commands
+from the repository root. Do not claim a platform or backend works unless its applicable runtime
+checks and real MCP acceptance test pass on that machine.
 
-## 1. Choose the supported deployment path
+## 1. Supported deployment paths
 
-| Environment                           | Status                                | CUDA backend     | Notes                                                           |
-| ------------------------------------- | ------------------------------------- | ---------------- | --------------------------------------------------------------- |
-| Windows 10/11 x86-64, bare metal      | Supported and locally verified        | PyTorch SDPA     | Verified on an RTX 4090 Laptop GPU                              |
-| Linux x86-64, bare metal              | Implemented, not yet locally verified | FlashAttention 2 | Requires a CUDA build toolchain                                 |
-| WSL2 with a Linux x86-64 distribution | Implemented, not yet locally verified | FlashAttention 2 | Uses the Windows host's WSL-capable NVIDIA driver               |
-| macOS                                 | Unsupported                           | None             | Apple MPS and CPU fallbacks are intentionally absent            |
-| Docker or other containers            | Not supported or verified             | Undefined        | Use native bare metal or WSL2 until a container contract exists |
+| Environment | Backend | Status | Execution |
+| --- | --- | --- | --- |
+| Windows 10/11 x86-64, bare metal | Parakeet | Supported and locally verified | CPU |
+| Windows 10/11 x86-64, bare metal | Granite | Supported and locally verified | CUDA 12.8 with SDPA |
+| Linux x86-64, bare metal | Parakeet | Implemented, not locally verified | CPU |
+| Linux x86-64, bare metal | Granite | Implemented, not locally verified | CUDA 12.8 with FlashAttention 2 |
+| Linux arm64, bare metal | Parakeet | Implemented, not locally verified | CPU |
+| WSL2 x86-64 | Parakeet or Granite | Implemented, not locally verified | CPU or CUDA |
+| macOS arm64 | Parakeet | Implemented, not locally verified | Metal |
+| macOS x86-64 | Parakeet | Implemented, not locally verified | CPU |
+| Containers | Any | Unsupported and unverified | Undefined |
 
-STT-MCP fails closed unless exactly one NVIDIA GPU is visible. Do not set or remap
-`CUDA_VISIBLE_DEVICES`. At model startup, NVIDIA NVML must satisfy the server's conservative 8 GiB
-globally free safety floor.
+Granite remains fail-closed: exactly one NVIDIA GPU must be visible and NVML must report at least
+8 GiB globally free before startup. Do not set or remap `CUDA_VISIBLE_DEVICES`. The 8 GiB floor is
+conservative startup headroom over a measured 4.607 GiB peak, not intrinsic model consumption.
 
-### What the 8 GiB floor means
-
-It is a startup policy, not a demonstrated model minimum. On the verified Windows RTX 4090 Laptop
-GPU path, a real 30-second transcription measured:
-
-- 4.075 GiB additional global VRAM after model load;
-- 4.454 GiB additional global VRAM during inference;
-- 4.607 GiB peak PyTorch reserved memory.
-
-The 8 GiB floor deliberately leaves roughly 3.4 GiB beyond that observed peak because Windows
-native model startup previously crashed without a Python exception while a competing Topaz CUDA
-workload was active. GPUs or shared workloads with less than 8 GiB free may be technically capable
-of inference, but the current server rejects them because that configuration has not passed a
-constrained-VRAM MCP acceptance test. Do not describe 8 GiB as intrinsic model consumption.
+Parakeet does not use CUDA in STT-MCP. The selected release executable and GGUF must already exist
+locally; runtime code never downloads either asset.
 
 ## 2. Install common prerequisites
 
-All platforms need:
+Every path requires:
 
-- [uv](https://docs.astral.sh/uv/) with a managed CPython 3.13 installation;
+- [uv](https://docs.astral.sh/uv/) with managed CPython 3.13;
 - `ffmpeg` and `ffprobe` on `PATH`;
-- enough disk space for the CUDA PyTorch environment and Granite model cache;
-- network access to Hugging Face for the initial pinned snapshot download.
-
-Verify the common tools:
+- enough storage for the selected runtime and model;
+- network access while installing dependencies, runtimes, and models.
 
 ```console
 uv --version
 uv python install 3.13
 ffmpeg -version
 ffprobe -version
-```
-
-Use `uv` only. Do not create a Conda environment, run `pip`, or use a system Python installation.
-
-## 3. Configure CUDA by operating system
-
-### Windows bare metal
-
-1. Install a current NVIDIA Windows driver that supports CUDA 12.8, then reboot if requested.
-   Use NVIDIA's driver installer or your managed enterprise driver channel.
-2. Do **not** install the full CUDA Toolkit solely for STT-MCP on Windows. The pinned PyTorch wheel
-   includes its CUDA runtime, and the Windows path uses SDPA rather than compiling FlashAttention.
-3. Install FFmpeg and uv through their official installers or a trusted package manager.
-4. Verify the driver and global memory:
-
-```powershell
-nvidia-smi
-nvidia-smi --list-gpus
-nvidia-smi --query-gpu=name,driver_version,memory.total,memory.free --format=csv
-```
-
-Exactly one GPU must be listed. The current server additionally enforces its 8192 MiB globally free
-startup safety floor; this is conservative headroom over the measured 4.607 GiB peak, not the
-model's minimum VRAM requirement. Pause video enhancers, local LLMs, games, and other CUDA
-workloads if necessary. On Windows WDDM, do not use `torch.cuda.mem_get_info()` as the global-memory
-authority; STT-MCP intentionally uses NVML.
-
-### Linux bare metal
-
-1. Install a current NVIDIA Linux driver and the CUDA Toolkit from NVIDIA's instructions for the
-   exact distribution: <https://docs.nvidia.com/cuda/cuda-installation-guide-linux/>.
-2. Install a C/C++ build toolchain and FFmpeg. On Debian/Ubuntu this normally includes
-   `build-essential` and `ffmpeg`.
-3. Verify both the driver and compiler:
-
-```bash
-nvidia-smi
-nvidia-smi --list-gpus
-nvidia-smi --query-gpu=name,driver_version,memory.total,memory.free --format=csv
-nvcc --version
-gcc --version
-ffmpeg -version
-```
-
-The CUDA Toolkit and compiler are required because `uv sync` builds the pinned FlashAttention 2
-dependency for the Linux path.
-
-### WSL2
-
-1. Install WSL2 and an x86-64 Linux distribution.
-2. Install an NVIDIA Windows host driver with WSL CUDA support. Follow
-   <https://docs.nvidia.com/cuda/wsl-user-guide/>.
-3. Do **not** install a Linux NVIDIA display/kernel driver inside WSL. Install only the WSL/Linux
-   CUDA Toolkit and normal Linux build prerequisites inside the distribution.
-4. Keep the checkout in the WSL Linux filesystem rather than under `/mnt/c` for build performance.
-5. Run the Linux verification commands above inside WSL. `nvidia-smi` must see exactly one GPU.
-
-## 4. Create the locked project environment
-
-```console
 uv sync --python 3.13 --locked
 ```
 
-Verify the selected runtime:
+Use `uv` only. Do not use Conda, direct `pip`, or a system Python environment.
+
+## 3. Inspect hardware and confirm the backend
+
+Run the machine-readable inspection before installing a backend:
 
 ```console
-uv run python -c "import torch; print('torch=', torch.__version__); print('cuda_build=', torch.version.cuda); print('cuda_available=', torch.cuda.is_available()); print('device_count=', torch.cuda.device_count()); print('device=', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+uv run stt-mcp setup inspect
 ```
 
-Required results:
+The JSON reports platform, architecture, NVIDIA GPU count, maximum free VRAM, a concrete
+`recommended_backend`, an optional `parakeet_device`, and a stable reason code.
 
-- PyTorch reports a CUDA 12.8 build.
-- `cuda_available=True`.
-- `device_count=1`.
-- The expected NVIDIA GPU name is printed.
+The setup agent must:
 
-On Linux and WSL2, also verify the compiled backend:
+1. show the recommendation and the hardware facts that produced it;
+2. ask the user to confirm Granite or Parakeet, while offering the supported alternative;
+3. install and verify only the confirmed backend;
+4. persist that concrete choice with `stt-mcp setup configure`.
+
+Do not silently substitute the recommendation. A missing configuration defaults to Granite only
+for compatibility with releases that predate backend selection; new setups must persist a choice.
+
+Default configuration locations are `%LOCALAPPDATA%\stt-mcp\config.json` on Windows and
+`${XDG_CONFIG_HOME:-~/.config}/stt-mcp/config.json` on POSIX. `STT_MCP_CONFIG` can point CLI and MCP
+processes at an alternate configuration for isolated acceptance testing.
+
+## 4. Install Parakeet
+
+STT-MCP pins:
+
+```text
+parakeet.cpp release=v0.4.0
+parakeet.cpp source commit=1da853421de9710cbe894a0110711de5a0516486
+model repository=mudler/parakeet-cpp-gguf
+model revision=399aa8eab0c12f128f2cc562277c30d99cfd7bdc
+model file=tdt-0.6b-v3-q4_k.gguf
+model SHA-256=993d73feb4206dadda865ab25bd64b50c48dc4d013c3bf6126a721f28b1d5ee8
+```
+
+The parakeet.cpp runtime is MIT licensed. The pinned model is CC-BY-4.0; preserve its attribution
+when redistributing it. Review both upstream licenses before redistribution.
+
+### Release archives
+
+| Platform | Archive | SHA-256 | Device |
+| --- | --- | --- | --- |
+| Windows x64 | `parakeet-v0.4.0-bin-win-cpu-x64.zip` | `2880150a1bad2944baed46f2e6bb9f1bc55263a9f2bb85573785a7ec4fa35f27` | `cpu` |
+| Linux x64 | `parakeet-v0.4.0-bin-linux-cpu-x64.tar.gz` | `0846509eeb64fcb40e0ad28cd16b5bec5387e4799e08c85fb600b428bb306240` | `cpu` |
+| Linux arm64 | `parakeet-v0.4.0-bin-linux-cpu-arm64.tar.gz` | `6634487a4cdbd3185e7a127aa4f22fbc49ec56421f7bfb14f450400260597773` | `cpu` |
+| macOS x64 | `parakeet-v0.4.0-bin-macos-cpu-x64.tar.gz` | `6f985e7a7185646e97a2d4fa7953b2019327ad56ad677f0602c666745d036a8d` | `cpu` |
+| macOS arm64 | `parakeet-v0.4.0-bin-macos-metal-arm64.tar.gz` | `e607d8700bec29c5bf8fa2e8155adfbf92d4433d98608a9dd866633ea7d01767` | `metal` |
+
+### Windows PowerShell
+
+```powershell
+$Root = Join-Path $env:LOCALAPPDATA "stt-mcp\parakeet"
+New-Item -ItemType Directory -Force -Path $Root | Out-Null
+$Archive = Join-Path $Root "parakeet-v0.4.0-bin-win-cpu-x64.zip"
+$ArchiveUrl = "https://github.com/mudler/parakeet.cpp/releases/download/v0.4.0/parakeet-v0.4.0-bin-win-cpu-x64.zip"
+$ArchiveSha = "2880150a1bad2944baed46f2e6bb9f1bc55263a9f2bb85573785a7ec4fa35f27"
+Invoke-WebRequest $ArchiveUrl -OutFile $Archive
+if ((Get-FileHash $Archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ArchiveSha) { throw "Parakeet archive checksum mismatch" }
+Expand-Archive $Archive -DestinationPath $Root -Force
+
+$Model = Join-Path $Root "tdt-0.6b-v3-q4_k.gguf"
+$ModelUrl = "https://huggingface.co/mudler/parakeet-cpp-gguf/resolve/399aa8eab0c12f128f2cc562277c30d99cfd7bdc/tdt-0.6b-v3-q4_k.gguf?download=true"
+$ModelSha = "993d73feb4206dadda865ab25bd64b50c48dc4d013c3bf6126a721f28b1d5ee8"
+Invoke-WebRequest $ModelUrl -OutFile $Model
+if ((Get-FileHash $Model -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ModelSha) { throw "Parakeet model checksum mismatch" }
+
+$Executable = (Get-ChildItem $Root -Recurse -Filter "parakeet-cli.exe" | Select-Object -First 1).FullName
+if (-not $Executable) { throw "parakeet-cli.exe was not found in the release archive" }
+uv run stt-mcp setup configure --backend parakeet --parakeet-executable $Executable --parakeet-model $Model --parakeet-device cpu
+```
+
+### Linux
+
+Linux requires `curl`, `tar`, and `sha256sum`. The following command selects the pinned archive for
+the current supported architecture:
 
 ```bash
+ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/stt-mcp/parakeet"
+mkdir -p "$ROOT"
+
+case "$(uname -m)" in
+  x86_64|amd64)
+    ARCHIVE='parakeet-v0.4.0-bin-linux-cpu-x64.tar.gz'
+    ARCHIVE_SHA='0846509eeb64fcb40e0ad28cd16b5bec5387e4799e08c85fb600b428bb306240'
+    ;;
+  aarch64|arm64)
+    ARCHIVE='parakeet-v0.4.0-bin-linux-cpu-arm64.tar.gz'
+    ARCHIVE_SHA='6634487a4cdbd3185e7a127aa4f22fbc49ec56421f7bfb14f450400260597773'
+    ;;
+  *)
+    echo "Unsupported Linux architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+curl -fL "https://github.com/mudler/parakeet.cpp/releases/download/v0.4.0/$ARCHIVE" -o "$ROOT/$ARCHIVE"
+printf '%s  %s\n' "$ARCHIVE_SHA" "$ROOT/$ARCHIVE" | sha256sum -c -
+tar -xzf "$ROOT/$ARCHIVE" -C "$ROOT"
+
+MODEL="$ROOT/tdt-0.6b-v3-q4_k.gguf"
+MODEL_SHA='993d73feb4206dadda865ab25bd64b50c48dc4d013c3bf6126a721f28b1d5ee8'
+curl -fL 'https://huggingface.co/mudler/parakeet-cpp-gguf/resolve/399aa8eab0c12f128f2cc562277c30d99cfd7bdc/tdt-0.6b-v3-q4_k.gguf?download=true' -o "$MODEL"
+printf '%s  %s\n' "$MODEL_SHA" "$MODEL" | sha256sum -c -
+
+EXECUTABLE="$(find "$ROOT" -type f -name parakeet-cli -print -quit)"
+[ -n "$EXECUTABLE" ] || { echo "parakeet-cli was not found in the release archive" >&2; exit 1; }
+uv run stt-mcp setup configure --backend parakeet \
+  --parakeet-executable "$EXECUTABLE" \
+  --parakeet-model "$MODEL" \
+  --parakeet-device cpu
+```
+
+### macOS
+
+macOS requires `curl`, `tar`, and the built-in `shasum`. Intel Macs use CPU; Apple Silicon uses the
+Metal archive and device:
+
+```bash
+ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/stt-mcp/parakeet"
+mkdir -p "$ROOT"
+
+case "$(uname -m)" in
+  x86_64)
+    ARCHIVE='parakeet-v0.4.0-bin-macos-cpu-x64.tar.gz'
+    ARCHIVE_SHA='6f985e7a7185646e97a2d4fa7953b2019327ad56ad677f0602c666745d036a8d'
+    DEVICE='cpu'
+    ;;
+  arm64)
+    ARCHIVE='parakeet-v0.4.0-bin-macos-metal-arm64.tar.gz'
+    ARCHIVE_SHA='e607d8700bec29c5bf8fa2e8155adfbf92d4433d98608a9dd866633ea7d01767'
+    DEVICE='metal'
+    ;;
+  *)
+    echo "Unsupported macOS architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+curl -fL "https://github.com/mudler/parakeet.cpp/releases/download/v0.4.0/$ARCHIVE" -o "$ROOT/$ARCHIVE"
+[ "$(shasum -a 256 "$ROOT/$ARCHIVE" | awk '{print $1}')" = "$ARCHIVE_SHA" ] || {
+  echo "Parakeet archive checksum mismatch" >&2
+  exit 1
+}
+tar -xzf "$ROOT/$ARCHIVE" -C "$ROOT"
+
+MODEL="$ROOT/tdt-0.6b-v3-q4_k.gguf"
+MODEL_SHA='993d73feb4206dadda865ab25bd64b50c48dc4d013c3bf6126a721f28b1d5ee8'
+curl -fL 'https://huggingface.co/mudler/parakeet-cpp-gguf/resolve/399aa8eab0c12f128f2cc562277c30d99cfd7bdc/tdt-0.6b-v3-q4_k.gguf?download=true' -o "$MODEL"
+[ "$(shasum -a 256 "$MODEL" | awk '{print $1}')" = "$MODEL_SHA" ] || {
+  echo "Parakeet model checksum mismatch" >&2
+  exit 1
+}
+
+EXECUTABLE="$(find "$ROOT" -type f -name parakeet-cli -print -quit)"
+[ -n "$EXECUTABLE" ] || { echo "parakeet-cli was not found in the release archive" >&2; exit 1; }
+uv run stt-mcp setup configure --backend parakeet \
+  --parakeet-executable "$EXECUTABLE" \
+  --parakeet-model "$MODEL" \
+  --parakeet-device "$DEVICE"
+```
+
+Do not use a model alias or `parakeet-server`; those paths may download models at runtime.
+
+## 5. Install Granite
+
+Granite supports Windows x86-64, Linux x86-64, and WSL2 x86-64 only.
+
+### Install dependencies
+
+```console
+uv sync --python 3.13 --locked --extra granite
+uv run stt-mcp setup configure --backend granite
+```
+
+### Validate CUDA
+
+Install a current NVIDIA driver compatible with CUDA 12.8. Linux and WSL2 also require the CUDA
+Toolkit, a C/C++ toolchain, and `nvcc` because the locked environment builds FlashAttention 2.
+WSL2 must use the Windows host's WSL-capable NVIDIA driver, not a Linux display driver inside WSL.
+
+Verify exactly one GPU and the global free-memory floor:
+
+```console
+nvidia-smi --list-gpus
+nvidia-smi --query-gpu=name,driver_version,memory.total,memory.free --format=csv
+```
+
+Verify PyTorch:
+
+```console
+uv run python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.device_count())"
+```
+
+Linux and WSL2 must also run:
+
+```console
+nvcc --version
 uv run python -c "import flash_attn; print(flash_attn.__version__)"
 ```
 
-## 5. Download and verify the pinned Hugging Face model
+### Download and verify the model
 
-The code authority is `MODEL_ID` and `MODEL_REVISION` in `src/stt_mcp/model.py`. At the time of
-this runbook, they are:
+The reviewed Granite model boundary is:
 
 ```text
 MODEL_ID=ibm-granite/granite-speech-4.1-2b-nar
 MODEL_REVISION=99a4df9007ac5682f9daa093fb7008ff606e9a5d
 ```
 
-First confirm that the checked-out code still has those values:
+Download and verify the exact snapshot:
 
 ```console
-uv run python -c "from stt_mcp.model import MODEL_ID, MODEL_REVISION; print(MODEL_ID); print(MODEL_REVISION)"
+uv run hf download ibm-granite/granite-speech-4.1-2b-nar --revision 99a4df9007ac5682f9daa093fb7008ff606e9a5d --quiet
+uv run hf cache verify ibm-granite/granite-speech-4.1-2b-nar --revision 99a4df9007ac5682f9daa093fb7008ff606e9a5d --fail-on-missing-files
 ```
 
-Download and verify every file against the exact remote revision.
+`GraniteTranscriber.load()` uses `trust_remote_code=True`. Review Python files and upstream diffs
+before changing the revision. Never replace the commit with `main`, a branch, or an unreviewed tag.
 
-PowerShell:
+## 6. Run static and default test gates
 
-```powershell
-$ModelId = "ibm-granite/granite-speech-4.1-2b-nar"
-$Revision = "99a4df9007ac5682f9daa093fb7008ff606e9a5d"
-$env:PYTHONUTF8 = "1"
-$Snapshot = uv run hf download $ModelId --revision $Revision --quiet
-uv run hf cache verify $ModelId --revision $Revision --fail-on-missing-files
-$Snapshot
-Remove-Item Env:PYTHONUTF8
-```
-
-`PYTHONUTF8=1` prevents the Hugging Face CLI's Unicode verification status symbols from failing on
-Windows installations whose active console code page cannot encode them.
-
-Bash:
-
-```bash
-MODEL_ID='ibm-granite/granite-speech-4.1-2b-nar'
-REVISION='99a4df9007ac5682f9daa093fb7008ff606e9a5d'
-SNAPSHOT="$(uv run hf download "$MODEL_ID" --revision "$REVISION" --quiet)"
-uv run hf cache verify "$MODEL_ID" --revision "$REVISION" --fail-on-missing-files
-printf '%s\n' "$SNAPSHOT"
-```
-
-`GraniteTranscriber.load()` uses `trust_remote_code=True`, so Python files from this exact snapshot
-execute locally. Before changing the revision, inspect the snapshot's Python files and review the
-upstream diff. Never replace the commit hash with `main`, a branch, or an unreviewed tag. Checksum
-verification proves cache integrity against the selected Hub revision; it does not make unreviewed
-remote code trustworthy.
-
-## 6. Run deterministic project gates
+Contributors should install the Granite extra because the complete test suite covers both engines:
 
 ```console
+uv sync --python 3.13 --locked --extra granite
 uv run ruff check .
 uv run basedpyright
 uv run ty check src tests
@@ -191,111 +280,85 @@ uv run pytest
 uv build
 ```
 
-The normal pytest suite skips the expensive real-model MCP acceptance test unless a media path is
-explicitly supplied.
+The normal pytest run skips the real backend acceptance unless `STT_MCP_TEST_MEDIA` is set.
 
-## 7. Run a real CLI transcription
+## 7. Run real CLI and MCP acceptance
 
-Choose a local file containing 5 to 30 seconds of clear speech. Avoid synthetic silence or a pure
-tone because that does not validate speech recognition.
+Use 5 to 30 seconds of clear speech, not silence or a pure tone.
 
-PowerShell:
+### CLI smoke test
 
 ```powershell
 $Media = (Resolve-Path "D:\path\to\speech.wav").Path
-uv run stt-mcp transcribe $Media --output ".artifacts\cli-smoke" --format json --format srt
+uv run stt-mcp transcribe $Media --output ".artifacts\cli-smoke" --format json --format srt --format vtt
 ```
 
-Bash:
+Inspect the JSON for the confirmed backend and useful recognition. Verify that the CLI published
+JSON, SRT, and VTT. Timing remains coarse 30-second source-window timing.
 
-```bash
-MEDIA="$(realpath '/path/to/speech.wav')"
-uv run stt-mcp transcribe "$MEDIA" --output '.artifacts/cli-smoke' --format json --format srt
-```
-
-Inspect the JSON and SRT. The transcript should match the audible speech well enough to be useful.
-Timing is intentionally coarse 30-second source-window timing, not word timing.
-
-## 8. Run the real MCP acceptance test
-
-This test drives the FastMCP `transcribe` tool through an in-memory MCP client/server session,
-loads the real CUDA model, transcribes the configured media, publishes SRT and VTT, and lets the
-server lifespan close the worker.
-
-PowerShell:
+### FastMCP acceptance
 
 ```powershell
-$env:STT_MCP_TEST_MEDIA = (Resolve-Path "D:\path\to\speech.wav").Path
+$env:STT_MCP_TEST_MEDIA = $Media
 uv run pytest tests/test_mcp_acceptance.py -q -s
 Remove-Item Env:STT_MCP_TEST_MEDIA
 ```
 
-Bash:
+The acceptance test must use the configured backend and publish SRT and VTT artifacts.
 
-```bash
-STT_MCP_TEST_MEDIA="$(realpath '/path/to/speech.wav')" \
-  uv run pytest tests/test_mcp_acceptance.py -q -s
-```
+### Process cleanup
 
-Acceptance requires:
-
-- pytest exits successfully;
-- both SRT and VTT files are published in pytest's isolated temporary directory;
-- no partial artifact is reported;
-- no `stt_mcp.worker` process survives after pytest exits.
-
-On Windows, check worker cleanup with:
+After MCP teardown, Windows must show no Parakeet CLI or Granite worker:
 
 ```powershell
+$SelfPid = $PID
 Get-CimInstance Win32_Process |
-  Where-Object { $_.Name -like "python*" -and $_.CommandLine -like "*stt_mcp.worker*" }
+  Where-Object {
+    $_.ProcessId -ne $SelfPid -and
+    ($_.CommandLine -like "*parakeet-cli*" -or $_.CommandLine -like "*stt_mcp.worker*")
+  }
 ```
 
-On Linux/WSL2:
+POSIX systems must show no matching process:
 
 ```bash
-pgrep -af 'stt_mcp\.worker' || true
+pgrep -af 'parakeet-cli|stt_mcp\.worker' || true
 ```
 
-No process rows are expected.
+## 8. Register an MCP client
 
-## 9. Register and test an external MCP client
-
-After the in-memory acceptance test passes:
+After acceptance passes:
 
 ```console
 uv run stt-mcp register opencode
 uv run stt-mcp register claude-desktop
 ```
 
-Register only clients installed on the machine. Restart the client, inspect that the `transcribe`
-tool is listed, and call it with the same absolute speech-file path. Client registration details and
-the manual stdio command are in [`../README.md`](../README.md#register-an-mcp-client).
+Register only installed clients. Restart the client, confirm the `transcribe` tool is listed, and
+call it with the same absolute speech path. Registration launches `-m stt_mcp.server`; backend
+selection remains in the persisted STT-MCP configuration, not in each client configuration.
 
-## 10. Cleanup and uninstall
-
-Temporary normalized audio is deleted automatically. Transcript artifacts and the Hugging Face
-model cache are persistent by design.
+## 9. Cleanup
 
 ```console
 uv run stt-mcp unregister opencode
 uv run stt-mcp unregister claude-desktop
-uv tool uninstall stt-mcp
 ```
 
-Remove `.artifacts/` when its transcripts are no longer needed. To reclaim model storage, remove
-the Hugging Face cache entry for `ibm-granite/granite-speech-4.1-2b-nar` only after confirming that
-no STT-MCP worker is running.
+The repository workflow installs STT-MCP into `.venv` through `uv sync`; it does not create a uv
+tool installation. Delete `.venv` only when you intentionally want to remove that project
+environment. Transcript artifacts, configuration, downloaded Parakeet assets, and the Hugging Face
+cache remain until explicitly removed.
 
-## 11. Evidence to report
+## 10. Required completion report
 
 An agent declaring setup complete must report:
 
-- OS and whether it is bare metal or WSL2;
-- GPU model, driver version, global free VRAM, PyTorch version, and CUDA build;
-- exact model ID and revision plus successful `hf cache verify` output;
-- FFmpeg/FFprobe versions;
+- OS, architecture, and bare-metal or WSL2 status;
+- inspection JSON, recommended backend, user-confirmed backend, and persisted config path;
+- exact runtime/model revisions and successful SHA-256 or Hugging Face cache verification;
+- FFmpeg/FFprobe versions and Granite CUDA details when applicable;
 - static gates, default pytest, build, CLI smoke, and MCP acceptance outcomes;
-- transcript sanity observations and known recognition errors;
-- zero worker processes after MCP teardown;
-- any unverified path, especially Linux/WSL2 FlashAttention runtime behavior.
+- transcript sanity observations and recognition errors;
+- zero surviving backend processes;
+- every unverified platform or backend path.
