@@ -10,6 +10,7 @@ import anyio
 from pydantic import BaseModel, ConfigDict
 
 from stt_mcp.artifacts import publish_artifacts
+from stt_mcp.backend import SpeechEngine, TranscriptionBusyError
 from stt_mcp.contracts import (
     ArtifactFormat,
     ArtifactRecord,
@@ -18,7 +19,6 @@ from stt_mcp.contracts import (
     TranscriptSegment,
 )
 from stt_mcp.media import normalize_media
-from stt_mcp.supervisor import WorkerBusyError, WorkerSupervisor
 
 
 class TranscriptionResult(BaseModel):
@@ -34,8 +34,8 @@ class TranscriptionResult(BaseModel):
 class TranscriptionService:
     """Orchestrate media normalization, inference, and artifact publication."""
 
-    def __init__(self, supervisor: WorkerSupervisor) -> None:
-        self._supervisor = supervisor
+    def __init__(self, engine: SpeechEngine) -> None:
+        self._engine = engine
         self._request_lock = anyio.Lock()
 
     async def transcribe(
@@ -47,7 +47,7 @@ class TranscriptionService:
     ) -> TranscriptionResult:
         """Transcribe one media file and publish all requested artifacts."""
         if self._request_lock.locked():
-            raise WorkerBusyError
+            raise TranscriptionBusyError
         async with self._request_lock:
             return await self._transcribe_owned(
                 source_path=source_path,
@@ -62,7 +62,7 @@ class TranscriptionService:
         output_directory: Path,
         formats: tuple[ArtifactFormat, ...],
     ) -> TranscriptionResult:
-        await self._supervisor.start()
+        await self._engine.start()
         with TemporaryDirectory(prefix="stt-mcp-") as temporary_directory:
             chunks = await normalize_media(
                 source_path=source_path,
@@ -75,12 +75,13 @@ class TranscriptionService:
                         index=chunk.index,
                         start_seconds=chunk.start_seconds,
                         end_seconds=chunk.end_seconds,
-                        text=await self._supervisor.transcribe(chunk),
+                        text=await self._engine.transcribe(chunk),
                     )
                 )
             segments = tuple(segment_list)
         document = TranscriptDocument(
             source_path=source_path,
+            backend=self._engine.backend,
             duration_seconds=chunks[-1].end_seconds,
             timing_quality=TimingQuality.COARSE_SOURCE_WINDOW,
             segments=segments,

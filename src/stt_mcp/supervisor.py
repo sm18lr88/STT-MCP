@@ -12,6 +12,7 @@ from uuid import uuid4
 import anyio
 from anyio.streams.buffered import BufferedByteReceiveStream
 
+from stt_mcp.backend import Backend
 from stt_mcp.cuda_capacity import ensure_cuda_capacity
 from stt_mcp.model import MODEL_ID, MODEL_REVISION
 from stt_mcp.worker_protocol import (
@@ -33,7 +34,7 @@ from stt_mcp.worker_protocol import (
 if TYPE_CHECKING:
     from anyio.abc import ByteReceiveStream, Process
 
-    from stt_mcp.media import NormalizedChunk
+    from stt_mcp.backend import AudioChunk
     from stt_mcp.runtime_policy import RuntimePlan
 
 CREATE_NO_WINDOW: Final = 0x08000000
@@ -86,6 +87,11 @@ class WorkerSupervisor:
         self._reader = None
         self._stderr = None
 
+    @property
+    def backend(self) -> Backend:
+        """Return Granite for transcript provenance."""
+        return Backend.GRANITE
+
     async def start(self) -> None:
         """Lazily initialize the worker before source preprocessing begins."""
         if self._lock.locked():
@@ -93,7 +99,7 @@ class WorkerSupervisor:
         async with self._lock:
             await self._ensure_started()
 
-    async def transcribe(self, chunk: NormalizedChunk) -> str:
+    async def transcribe(self, chunk: AudioChunk) -> str:
         """Transcribe one chunk or reject immediately when already occupied."""
         if self._lock.locked():
             raise WorkerBusyError
