@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from typing import TYPE_CHECKING
 
 import anyio
 import pytest
 
-from stt_mcp.media import normalize_media, probe_media
+from stt_mcp.media import MediaInfo, normalize_media, probe_media
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,3 +47,44 @@ async def test_normalize_media_produces_16khz_mono_wav(tmp_path: Path) -> None:
     assert chunk_info.channels == 1
     assert chunks[0].start_seconds == 0.0
     assert 1.9 < chunks[0].end_seconds < 2.1
+
+
+@pytest.mark.anyio
+async def test_normalize_media_exits_on_ffmpeg_decode_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run_ffmpeg(
+        command: tuple[str, ...],
+        *,
+        stdout: int,
+        stderr: int,
+        check: bool,
+        creationflags: int,
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert stdout == subprocess.PIPE
+        assert stderr == subprocess.PIPE
+        assert check is False
+        assert creationflags >= 0
+        assert "-xerror" in command
+        await anyio.Path(command[-1].replace("%06d", "000000")).touch()
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    async def probe_damaged_media(_: Path) -> MediaInfo:
+        return MediaInfo(duration_seconds=1.0, sample_rate=16_000, channels=1)
+
+    # Given
+    monkeypatch.setattr("stt_mcp.media.anyio.run_process", run_ffmpeg)
+    monkeypatch.setattr(
+        "stt_mcp.media.probe_media",
+        probe_damaged_media,
+    )
+
+    # When
+    chunks = await normalize_media(
+        source_path=tmp_path / "damaged.mp4",
+        output_directory=tmp_path / "chunks",
+    )
+
+    # Then
+    assert len(chunks) == 1

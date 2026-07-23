@@ -135,6 +135,7 @@ async def normalize_media(
     completed = await anyio.run_process(
         (
             "ffmpeg",
+            "-xerror",
             "-v",
             "error",
             "-nostdin",
