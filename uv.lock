@@ -1148,23 +1148,27 @@ name = "stt-mcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "accelerate" },
     { name = "anyio" },
+    { name = "mcp", extra = ["cli"] },
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+granite = [
+    { name = "accelerate" },
     { name = "filelock" },
     { name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "huggingface-hub" },
-    { name = "mcp", extra = ["cli"] },
     { name = "ninja", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "nvidia-ml-py" },
-    { name = "pydantic" },
-    { name = "rich" },
     { name = "safetensors" },
     { name = "soundfile" },
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "torchaudio", version = "2.9.1", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'" },
     { name = "torchaudio", version = "2.9.1+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux') or sys_platform == 'win32'" },
     { name = "transformers" },
-    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -1178,23 +1182,24 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = "==1.14.0" },
+    { name = "accelerate", marker = "extra == 'granite'", specifier = "==1.14.0" },
     { name = "anyio", specifier = "==4.14.2" },
-    { name = "filelock", specifier = "==3.32.0" },
-    { name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = "==2.8.3" },
-    { name = "huggingface-hub", specifier = "==1.24.0" },
+    { name = "filelock", marker = "extra == 'granite'", specifier = "==3.32.0" },
+    { name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'granite'", specifier = "==2.8.3" },
+    { name = "huggingface-hub", marker = "extra == 'granite'", specifier = "==1.24.0" },
     { name = "mcp", extras = ["cli"], specifier = "==1.28.1" },
-    { name = "ninja", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = "==1.13.0" },
-    { name = "nvidia-ml-py", specifier = "==13.610.43" },
+    { name = "ninja", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'granite'", specifier = "==1.13.0" },
+    { name = "nvidia-ml-py", marker = "extra == 'granite'", specifier = "==13.610.43" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "rich", specifier = "==15.0.0" },
-    { name = "safetensors", specifier = "==0.8.0" },
-    { name = "soundfile", specifier = "==0.14.0" },
-    { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = "==2.9.1", index = "https://download.pytorch.org/whl/cu128" },
-    { name = "torchaudio", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = "==2.9.1", index = "https://download.pytorch.org/whl/cu128" },
-    { name = "transformers", specifier = "==5.14.1" },
+    { name = "safetensors", marker = "extra == 'granite'", specifier = "==0.8.0" },
+    { name = "soundfile", marker = "extra == 'granite'", specifier = "==0.14.0" },
+    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'granite') or (sys_platform == 'win32' and extra == 'granite')", specifier = "==2.9.1", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "torchaudio", marker = "(sys_platform == 'linux' and extra == 'granite') or (sys_platform == 'win32' and extra == 'granite')", specifier = "==2.9.1", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "transformers", marker = "extra == 'granite'", specifier = "==5.14.1" },
     { name = "typer", specifier = "==0.27.0" },
 ]
+provides-extras = ["granite"]
 
 [package.metadata.requires-dev]
 dev = [

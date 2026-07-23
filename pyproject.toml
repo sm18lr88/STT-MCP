@@ -1,26 +1,30 @@
 [project]
 name = "stt-mcp"
 version = "0.1.0"
-description = "Local CUDA speech-to-text MCP server powered by IBM Granite Speech"
+description = "Local speech-to-text MCP server powered by Granite Speech or parakeet.cpp"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "accelerate==1.14.0",
     "anyio==4.14.2",
+    "mcp[cli]==1.28.1",
+    "pydantic==2.13.4",
+    "rich==15.0.0",
+    "typer==0.27.0",
+]
+
+[project.optional-dependencies]
+granite = [
+    "accelerate==1.14.0",
     "filelock==3.32.0",
     "flash-attn==2.8.3 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "huggingface-hub==1.24.0",
-    "mcp[cli]==1.28.1",
     "ninja==1.13.0 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "nvidia-ml-py==13.610.43",
-    "pydantic==2.13.4",
-    "rich==15.0.0",
     "safetensors==0.8.0",
     "soundfile==0.14.0",
     "torch==2.9.1 ; sys_platform == 'linux' or sys_platform == 'win32'",
     "torchaudio==2.9.1 ; sys_platform == 'linux' or sys_platform == 'win32'",
     "transformers==5.14.1",
-    "typer==0.27.0",
 ]
 
 [project.scripts]
@@ -118,6 +122,8 @@ unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ARG", "D", "PLR2004", "S101", "S108", "SLF001"]
+"tests/test_setup_cli.py" = ["S603"]
+"src/stt_mcp/engine_factory.py" = ["PLC0415"]
 "typings/**/*.pyi" = ["N802"]
 
 [tool.ruff.lint.pydocstyle]
