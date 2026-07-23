@@ -2,36 +2,46 @@
 
 from __future__ import annotations
 
-import platform
-import sys
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import anyio
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.session import ServerSession  # noqa: TC002 - FastMCP resolves annotations
+from starlette.requests import Request  # noqa: TC002 - FastMCP resolves annotations
 
 from stt_mcp.contracts import ArtifactFormat
-from stt_mcp.runtime_policy import select_runtime
+from stt_mcp.engine_factory import create_configured_engine
 from stt_mcp.service import TranscriptionResult, TranscriptionService
-from stt_mcp.supervisor import WorkerSupervisor
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-_supervisor = WorkerSupervisor(select_runtime(platform=sys.platform, machine=platform.machine()))
-_service = TranscriptionService(_supervisor)
+    from stt_mcp.backend import SpeechEngine
+
+
+@dataclass(frozen=True, slots=True)
+class ServerContext:
+    """Process-lifetime engine and application service."""
+
+    engine: SpeechEngine
+    service: TranscriptionService
 
 
 @asynccontextmanager
-async def _lifespan(_: FastMCP) -> AsyncGenerator[None]:
-    yield
-    await _supervisor.aclose()
+async def _lifespan(_: FastMCP[ServerContext]) -> AsyncGenerator[ServerContext]:
+    engine = create_configured_engine()
+    try:
+        yield ServerContext(engine=engine, service=TranscriptionService(engine))
+    finally:
+        await engine.aclose()
 
 
-mcp = FastMCP(
+mcp = FastMCP[ServerContext](
     "STT-MCP",
-    instructions="Transcribe local audio or video files with IBM Granite Speech on CUDA.",
+    instructions="Transcribe local audio or video files with the configured speech backend.",
     lifespan=_lifespan,
 )
 
@@ -39,6 +49,7 @@ mcp = FastMCP(
 @mcp.tool(structured_output=True)
 async def transcribe(
     source_path: str,
+    ctx: Context[ServerSession, ServerContext, Request],
     output_directory: str | None = None,
     formats: list[ArtifactFormat] | None = None,
 ) -> TranscriptionResult:
@@ -50,7 +61,7 @@ async def transcribe(
         else source.parent
     )
     requested = tuple(formats) if formats is not None else tuple(ArtifactFormat)
-    return await _service.transcribe(
+    return await ctx.request_context.lifespan_context.service.transcribe(
         source_path=source,
         output_directory=destination,
         formats=requested,
