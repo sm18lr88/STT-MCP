@@ -303,6 +303,20 @@ substitute a globally installed tool.
 Use 5 to 30 seconds of clear speech, not silence or a pure tone. Longer recordings are accepted,
 but make the feedback cycle and acceptance run proportionally slower.
 
+### Repository reference media
+
+`assets/test-audio.mp3` is the tracked reference fixture for repeatable local acceptance. Its
+SHA-256 is `dfb6ef4cc9ad03ba54e24026ab734a56bf7e3251751e634e88f6f384402bff45` and its duration is
+256.068 seconds. The ordinary pytest run still skips real inference by default; use this fixture
+explicitly when a full-length reference acceptance run is appropriate:
+
+```powershell
+$Media = (Resolve-Path "assets\test-audio.mp3").Path
+$env:STT_MCP_TEST_MEDIA = $Media
+uv run pytest tests/test_mcp_acceptance.py -q -s
+Remove-Item Env:STT_MCP_TEST_MEDIA
+```
+
 ### CLI smoke test
 
 ```powershell

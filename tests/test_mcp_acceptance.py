@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -9,6 +10,22 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from stt_mcp.backend import Backend
 from stt_mcp.server import mcp
 from stt_mcp.service import TranscriptionResult
+
+REFERENCE_MEDIA_PATH = Path(__file__).parent.parent / "assets" / "test-audio.mp3"
+REFERENCE_MEDIA_SHA256 = "dfb6ef4cc9ad03ba54e24026ab734a56bf7e3251751e634e88f6f384402bff45"
+
+
+def test_reference_media_matches_pinned_checksum() -> None:
+    """Keep the checked-in acceptance media stable and reproducible."""
+    # Given
+    assert REFERENCE_MEDIA_PATH.is_file()
+
+    # When
+    with REFERENCE_MEDIA_PATH.open("rb") as media:
+        digest = hashlib.file_digest(media, "sha256").hexdigest()
+
+    # Then
+    assert digest == REFERENCE_MEDIA_SHA256
 
 
 def configured_media_path() -> Path:
