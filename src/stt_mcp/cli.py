@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import platform
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -12,6 +11,7 @@ import typer
 from rich.console import Console
 
 from stt_mcp.contracts import ArtifactFormat
+from stt_mcp.engine_factory import create_configured_engine
 from stt_mcp.registration import (
     RegistrationClient,
     default_config_path,
@@ -22,12 +22,12 @@ from stt_mcp.registration import (
 from stt_mcp.registration import (
     unregister_client as unregister_mcp_client,
 )
-from stt_mcp.runtime_policy import select_runtime
 from stt_mcp.server import main as run_server
 from stt_mcp.service import TranscriptionResult, TranscriptionService
-from stt_mcp.supervisor import WorkerSupervisor
+from stt_mcp.setup_cli import setup_app
 
 app = typer.Typer(no_args_is_help=True)
+app.add_typer(setup_app, name="setup")
 console = Console()
 
 
@@ -51,16 +51,15 @@ async def _transcribe(
     output_directory: Path,
     formats: tuple[ArtifactFormat, ...],
 ) -> TranscriptionResult:
-    runtime = select_runtime(platform=sys.platform, machine=platform.machine())
-    supervisor = WorkerSupervisor(runtime)
+    engine = create_configured_engine()
     try:
-        return await TranscriptionService(supervisor).transcribe(
+        return await TranscriptionService(engine).transcribe(
             source_path=source,
             output_directory=output_directory,
             formats=formats,
         )
     finally:
-        await supervisor.aclose()
+        await engine.aclose()
 
 
 @app.command("register")
