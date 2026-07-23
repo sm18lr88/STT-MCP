@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -37,6 +38,25 @@ def configured_media_path() -> Path:
     if not source.is_file():
         pytest.fail(f"STT_MCP_TEST_MEDIA is not a readable file: {source}")
     return source
+
+
+@pytest.mark.anyio
+async def test_mcp_schema_uses_supported_json_schema_formats() -> None:
+    # Given / When
+    async with create_connected_server_and_client_session(
+        mcp,
+        raise_exceptions=True,
+    ) as session:
+        result = await session.list_tools()
+
+    tool = next(item for item in result.tools if item.name == "transcribe")
+    schema = json.dumps(
+        {"input": tool.inputSchema, "output": tool.outputSchema},
+        sort_keys=True,
+    )
+
+    # Then
+    assert '"format": "path"' not in schema
 
 
 @pytest.mark.anyio

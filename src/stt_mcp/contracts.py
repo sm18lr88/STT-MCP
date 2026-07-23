@@ -2,11 +2,13 @@
 
 from enum import StrEnum
 from pathlib import Path
-from typing import ClassVar
+from typing import Annotated, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema
 
 from stt_mcp.backend import Backend
+
+type JsonPath = Annotated[Path, WithJsonSchema({"type": "string"})]
 
 
 class ArtifactFormat(StrEnum):
@@ -41,7 +43,7 @@ class TranscriptDocument(BaseModel):
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
 
-    source_path: Path
+    source_path: JsonPath
     backend: Backend
     duration_seconds: float = Field(gt=0.0)
     timing_quality: TimingQuality
@@ -59,7 +61,7 @@ class ArtifactRecord(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
 
     format: ArtifactFormat
-    path: Path
+    path: JsonPath
 
 
 class TranscriptJsonPayload(BaseModel):
@@ -67,7 +69,7 @@ class TranscriptJsonPayload(BaseModel):
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
 
-    source_path: Path
+    source_path: JsonPath
     backend: Backend
     duration_seconds: float
     timing_quality: TimingQuality
