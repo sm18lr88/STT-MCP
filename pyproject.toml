@@ -84,7 +84,7 @@ reportPrivateUsage = "error"
 
 [tool.mypy]
 files = ["src", "tests"]
-mypy_path = "typings"
+mypy_path = ["src", "typings"]
 python_version = "3.13"
 strict = true
 
