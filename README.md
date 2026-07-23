@@ -1,67 +1,100 @@
 # STT-MCP
 
-A fast, local speech-to-text MCP server that lets AI agents understand audio and video; requires Python 3.13, `uv`, FFmpeg, and exactly one NVIDIA CUDA GPU, and currently enforces an 8 GiB globally free VRAM startup safety floor.
+Let your AI agents understand audio and video. Normalizes audio with FFMPEG -> translates -> cleans up after itself.
 
-STT-MCP uses the pinned
-[`ibm-granite/granite-speech-4.1-2b-nar`](https://huggingface.co/ibm-granite/granite-speech-4.1-2b-nar)
-model and publishes TXT, Markdown, JSON, SRT, and WebVTT locally.
+Chosen backend implementation depends on your hardware, and your agent will help you choose: Parakeet or Granite.
+That selection is persisted for both the CLI and MCP server.
 
-## Setup
+## Backends
 
-Follow [`docs/SETUP.md`](docs/SETUP.md) for CUDA, FFmpeg, model download and checksum
-verification, Windows/Linux/WSL2 instructions, and real MCP acceptance testing.
+| Backend  | Best for                                             | Runtime                                                     |
+| -------- | ---------------------------------------------------- | ----------------------------------------------------------- |
+| Parakeet | CPU-only Windows/Linux, Intel Mac, and Apple Silicon | Pinned `parakeet.cpp` v0.4.0 plus a local multilingual GGUF |
+| Granite  | Highest-quality verified CUDA path                   | Pinned IBM Granite Speech model on exactly one NVIDIA GPU   |
 
-- Windows x86-64 is verified with CUDA SDPA.
-- Linux x86-64 and WSL2 use FlashAttention 2 but remain runtime-unverified.
-- macOS, CPU/MPS fallback, containers, multi-GPU setups, and remapped
-  `CUDA_VISIBLE_DEVICES` are unsupported.
-- The observed Windows inference peak was about 4.61 GiB. The enforced 8 GiB free-VRAM floor is
-  conservative startup headroom, not intrinsic model consumption.
+Windows x86-64 is verified with Parakeet CPU and Granite CUDA SDPA. Linux, WSL2, Intel macOS, and
+Apple Silicon paths are implemented but remain runtime-unverified. Containers are unsupported.
 
-## Install
+## Quick start
+
+Follow [`docs/SETUP.md`](docs/SETUP.md) for the authoritative installation and acceptance procedure.
+Before continuing, install:
+
+- [uv](https://docs.astral.sh/uv/) with managed CPython 3.13;
+- `ffmpeg` and `ffprobe` on `PATH`;
+- enough storage for the selected runtime and model.
+
+Dependency and model installation also require network access. Prepare the project and inspect the
+machine:
 
 ```console
-uv tool install --python 3.13 .
-stt-mcp --help
-```
-
-For development:
-
-```console
+uv --version
+uv python install 3.13
+ffmpeg -version
+ffprobe -version
 uv sync --python 3.13 --locked
-uv run stt-mcp --help
+uv run stt-mcp setup inspect
 ```
+
+Review the JSON recommendation, then confirm the backend before installing or configuring it.
+`setup inspect` never changes configuration.
+
+### Granite
+
+Granite requires a supported NVIDIA/CUDA environment and the optional dependency group:
+
+```console
+uv sync --python 3.13 --locked --extra granite
+uv run stt-mcp setup configure --backend granite
+```
+
+### Parakeet
+
+Download and verify the exact executable and model from the
+[Parakeet setup instructions](docs/SETUP.md#4-install-parakeet), then persist their local paths:
+
+```console
+uv run stt-mcp setup configure --backend parakeet \
+  --parakeet-executable "/path/to/parakeet-cli" \
+  --parakeet-model "/path/to/tdt-0.6b-v3-q4_k.gguf" \
+  --parakeet-device cpu
+```
+
+Parakeet binaries and models are downloaded only during explicit setup, never at runtime.
 
 ## Transcribe from the CLI
 
-Publish all five formats beside the source:
+Publish TXT, Markdown, JSON, SRT, and WebVTT beside the source:
 
 ```console
-stt-mcp transcribe "/path/to/media.mp4"
+uv run stt-mcp transcribe "/path/to/media.mp4"
 ```
 
-Choose the output directory and formats:
+Choose formats and an output directory:
 
 ```console
-stt-mcp transcribe "/path/to/media.mp4" --output "/path/to/transcripts" --format json --format srt
+uv run stt-mcp transcribe "/path/to/media.mp4" --output "/path/to/transcripts" --format json --format srt
 ```
+
+JSON output includes the effective `backend`. Subtitle timing is coarse 30-second source-window
+timing for consistent behavior across both backends.
 
 ## Use as an MCP server
 
 Register a supported client, then restart it:
 
 ```console
-stt-mcp register opencode
-stt-mcp register claude-desktop
+uv run stt-mcp register opencode
+uv run stt-mcp register claude-desktop
 ```
 
-Other stdio clients can launch the installed environment's Python with:
+Other stdio clients can launch the installed Python environment with:
 
 ```text
 -m stt_mcp.server
 ```
 
-The server exposes one tool:
+The server exposes:
 
 ```text
 transcribe(
@@ -75,16 +108,21 @@ Omitting `output_directory` writes beside the source. Omitting `formats` publish
 
 ## Operational behavior
 
+- One backend is selected and latched for the MCP process.
 - One transcription runs at a time; concurrent requests fail immediately as busy.
-- Cancellation terminates and invalidates the worker.
+- Explicit Granite remains fail-closed under its CUDA/NVML safety policy.
+- Cancellation closes the active Parakeet process or invalidates the Granite worker.
 - Artifacts are atomically published, so failed requests do not leave partial output.
-- Subtitle timing is coarse 30-second source-window timing because the model does not provide
-  sentence or word timestamps.
-- The first transcription downloads the exact model revision pinned in `src/stt_mcp/model.py`.
+- Runtime code never downloads Parakeet assets.
+- Granite loads only when selected; Parakeet-only imports do not load Torch, Transformers, or NVML.
 
-## Verify
+## Contributor and backend verification
+
+The authoritative verification and real-acceptance sequence is in
+[`docs/SETUP.md`](docs/SETUP.md#6-run-static-and-default-test-gates). The default project gates are:
 
 ```console
+uv sync --python 3.13 --locked --extra granite
 uv run ruff check .
 uv run basedpyright
 uv run ty check src tests
@@ -93,7 +131,7 @@ uv run pytest
 uv build
 ```
 
-Run the real CUDA/MCP acceptance test with a local speech file:
+Run real acceptance with the configured backend:
 
 ```powershell
 $env:STT_MCP_TEST_MEDIA = (Resolve-Path "D:\path\to\speech.wav").Path
@@ -104,9 +142,11 @@ Remove-Item Env:STT_MCP_TEST_MEDIA
 ## Uninstall
 
 ```console
-stt-mcp unregister opencode
-stt-mcp unregister claude-desktop
-uv tool uninstall stt-mcp
+uv run stt-mcp unregister opencode
+uv run stt-mcp unregister claude-desktop
 ```
 
-Transcripts and the Hugging Face model cache remain until explicitly removed.
+The repository workflow installs STT-MCP into `.venv` through `uv sync`; it does not create a uv
+tool installation. Delete `.venv` only if you also want to remove that project environment.
+Transcripts, configuration, model caches, and downloaded Parakeet assets remain until you remove
+them explicitly.
