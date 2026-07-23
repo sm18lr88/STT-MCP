@@ -17,8 +17,16 @@ Apple Silicon paths are implemented but remain runtime-unverified. Containers ar
 
 ## Quick start
 
-Follow [`docs/SETUP.md`](docs/SETUP.md) for the authoritative installation and acceptance procedure.
-Before continuing, install:
+The recommended installation path is to point your coding agent at the authoritative runbook.
+Copy and paste this instruction into your agent:
+
+> Read [`docs/SETUP.md`](docs/SETUP.md) from top to bottom. Inspect my hardware, show me the
+> recommended backend and why, ask me to confirm or choose a supported alternative, then follow the
+> runbook to install, configure, and verify STT-MCP. Do not silently choose a backend or skip the
+> real speech acceptance test.
+
+The agent must pause for your backend confirmation before installing backend-specific assets. If
+you prefer a manual installation, follow the same runbook directly. Before continuing, install:
 
 - [uv](https://docs.astral.sh/uv/) with managed CPython 3.13;
 - `ffmpeg` and `ffprobe` on `PATH`;
