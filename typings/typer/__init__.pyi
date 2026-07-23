@@ -1,13 +1,6 @@
-from collections.abc import Callable
-from typing import ParamSpec, TypeVar
-
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-
-class Typer:
-    def __init__(self, *, no_args_is_help: bool = ...) -> None: ...
-    def __call__(self) -> None: ...
-    def command(self, name: str | None = ...) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]: ...
+from click import BadParameter as BadParameter
+from click import echo as echo
+from typer.main import Typer as Typer
 
 def Argument(
     default: str | None = ...,
