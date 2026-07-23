@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from importlib.metadata import requires
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -33,6 +34,20 @@ def test_setup_inspect_emits_machine_readable_recommendation() -> None:
     assert result.exit_code == 0
     inspection = HardwareInspection.model_validate_json(result.stdout)
     assert inspection.recommended_backend in {Backend.GRANITE, Backend.PARAKEET}
+
+
+def test_cli_registration_dependency_is_not_limited_to_granite_extra() -> None:
+    """Keep every CLI command usable after the common locked sync."""
+    # Given
+    requirements = requires("stt-mcp")
+
+    # Then
+    assert requirements is not None
+    assert "filelock==3.32.0" in requirements
+    assert not any(
+        requirement.startswith("filelock==") and "extra == 'granite'" in requirement
+        for requirement in requirements
+    )
 
 
 def test_setup_configure_persists_confirmed_parakeet_choice(tmp_path: Path) -> None:

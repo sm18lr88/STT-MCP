@@ -40,9 +40,16 @@ uv python install 3.13
 ffmpeg -version
 ffprobe -version
 uv sync --python 3.13 --locked
+uv run stt-mcp setup inspect
 ```
 
 Use `uv` only. Do not use Conda, direct `pip`, or a system Python environment.
+The final command is a common-install smoke check: it must work before a backend is selected and
+must not require the Granite extra.
+
+If `uv python install 3.13` reports that an unmanaged `python3.13.exe` already exists, review that
+executable before replacing it. Use `uv python install 3.13 --force` only when replacing that shim
+is intentional, then rerun the commands above. Do not continue with a different Python version.
 
 ## 3. Inspect hardware and confirm the backend
 
@@ -281,10 +288,20 @@ uv build
 ```
 
 The normal pytest run skips the real backend acceptance unless `STT_MCP_TEST_MEDIA` is set.
+If a Windows tool invocation reports `uv trampoline failed to canonicalize script path`, repair only
+the affected locked launcher and rerun its exact gate:
+
+```console
+uv sync --python 3.13 --locked --reinstall-package <tool-name>
+```
+
+For example, use `basedpyright`, `mypy`, or `pytest` as `<tool-name>`; do not skip the gate or
+substitute a globally installed tool.
 
 ## 7. Run real CLI and MCP acceptance
 
-Use 5 to 30 seconds of clear speech, not silence or a pure tone.
+Use 5 to 30 seconds of clear speech, not silence or a pure tone. Longer recordings are accepted,
+but make the feedback cycle and acceptance run proportionally slower.
 
 ### CLI smoke test
 
@@ -337,6 +354,21 @@ uv run stt-mcp register claude-desktop
 Register only installed clients. Restart the client, confirm the `transcribe` tool is listed, and
 call it with the same absolute speech path. Registration launches `-m stt_mcp.server`; backend
 selection remains in the persisted STT-MCP configuration, not in each client configuration.
+
+### Codex
+
+The `stt-mcp register` command updates JSON-configured clients. Codex manages its own TOML MCP
+configuration, so register it through the installed Codex CLI after acceptance passes:
+
+```powershell
+$Python = (Resolve-Path ".venv\Scripts\python.exe").Path
+codex mcp add stt-mcp -- $Python -m stt_mcp.server
+codex mcp get stt-mcp
+```
+
+This creates a global Codex stdio-server entry. Restart the Codex CLI, app, or IDE extension, then
+use `/mcp` or the MCP server settings to confirm that `stt-mcp` is enabled. To remove it later,
+run `codex mcp remove stt-mcp`.
 
 ## 9. Cleanup
 
