@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from stt_mcp.artifacts import publish_artifacts
+from stt_mcp.backend import Backend
 from stt_mcp.contracts import (
     ArtifactFormat,
     TimingQuality,
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 def _document(source_path: Path) -> TranscriptDocument:
     return TranscriptDocument(
         source_path=source_path,
+        backend=Backend.PARAKEET,
         duration_seconds=65.0,
         timing_quality=TimingQuality.COARSE_SOURCE_WINDOW,
         segments=(
@@ -55,6 +57,7 @@ def test_json_output_declares_coarse_timing_quality(tmp_path: Path) -> None:
 
     # Then
     assert payload.timing_quality is TimingQuality.COARSE_SOURCE_WINDOW
+    assert payload.backend is Backend.PARAKEET
     assert payload.text == "First Second Third"
 
 

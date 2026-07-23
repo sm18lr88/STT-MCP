@@ -44,6 +44,7 @@ def render_transcript(document: TranscriptDocument, artifact_format: ArtifactFor
         case ArtifactFormat.JSON:
             payload = TranscriptJsonPayload(
                 source_path=document.source_path,
+                backend=document.backend,
                 duration_seconds=document.duration_seconds,
                 timing_quality=document.timing_quality,
                 segments=document.segments,

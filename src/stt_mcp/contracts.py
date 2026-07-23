@@ -6,6 +6,8 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from stt_mcp.backend import Backend
+
 
 class ArtifactFormat(StrEnum):
     """Supported transcript artifact formats."""
@@ -40,6 +42,7 @@ class TranscriptDocument(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
 
     source_path: Path
+    backend: Backend
     duration_seconds: float = Field(gt=0.0)
     timing_quality: TimingQuality
     segments: tuple[TranscriptSegment, ...]
@@ -65,6 +68,7 @@ class TranscriptJsonPayload(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
 
     source_path: Path
+    backend: Backend
     duration_seconds: float
     timing_quality: TimingQuality
     segments: tuple[TranscriptSegment, ...]
