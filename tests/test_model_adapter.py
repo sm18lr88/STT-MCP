@@ -19,9 +19,7 @@ class _Output:
 
 
 class _Model:
-    def transcribe(
-        self, *, input_features: torch.Tensor, attention_mask: torch.Tensor
-    ) -> _Output:
+    def transcribe(self, *, input_features: torch.Tensor, attention_mask: torch.Tensor) -> _Output:
         assert input_features.shape == (1, 16_000)
         assert attention_mask.shape == (1, 16_000)
         return _Output(preds=[torch.tensor([1, 2])])

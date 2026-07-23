@@ -104,9 +104,7 @@ def test_unregister_removes_only_stt_mcp_entry(tmp_path: Path) -> None:
     # Then
     payload = JSON_OBJECT_ADAPTER.validate_json(config_path.read_bytes())
     assert removed is True
-    assert payload == {
-        "mcp": {"existing": {"type": "local", "command": ["existing"]}}
-    }
+    assert payload == {"mcp": {"existing": {"type": "local", "command": ["existing"]}}}
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX file modes are not available on Windows")

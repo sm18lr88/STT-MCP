@@ -103,9 +103,7 @@ class GraniteTranscriber:
         self._device = device
 
     @classmethod
-    def load(
-        cls, *, device: str, attention: AttentionImplementation
-    ) -> GraniteTranscriber:
+    def load(cls, *, device: str, attention: AttentionImplementation) -> GraniteTranscriber:
         """Load the exact reviewed model revision on the selected CUDA backend."""
         loaded_model = AutoModel.from_pretrained(
             MODEL_ID,
