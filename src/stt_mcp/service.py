@@ -46,14 +46,18 @@ class TranscriptionService:
         formats: tuple[ArtifactFormat, ...],
     ) -> TranscriptionResult:
         """Transcribe one media file and publish all requested artifacts."""
-        if self._request_lock.locked():
-            raise TranscriptionBusyError
-        async with self._request_lock:
+        try:
+            self._request_lock.acquire_nowait()
+        except anyio.WouldBlock:
+            raise TranscriptionBusyError from None
+        try:
             return await self._transcribe_owned(
                 source_path=source_path,
                 output_directory=output_directory,
                 formats=formats,
             )
+        finally:
+            self._request_lock.release()
 
     async def _transcribe_owned(
         self,
