@@ -12,13 +12,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, override
 
 from filelock import FileLock, Timeout
 from pydantic import TypeAdapter, ValidationError
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator, Mapping
 
 SERVER_NAME: Final = "stt-mcp"
 LOCK_TIMEOUT_SECONDS: Final = 30.0
@@ -32,6 +33,14 @@ class RegistrationClient(StrEnum):
 
     OPENCODE = "opencode"
     CLAUDE_DESKTOP = "claude-desktop"
+
+
+CLIENT_SECTION_NAMES: Final[Mapping[RegistrationClient, str]] = MappingProxyType(
+    {
+        RegistrationClient.OPENCODE: "mcp",
+        RegistrationClient.CLAUDE_DESKTOP: "mcpServers",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,29 +57,77 @@ class ClientConfigError(Exception):
 
 def default_config_path(client: RegistrationClient) -> Path:
     """Return the conventional user configuration path for a supported client."""
-    match client:
-        case RegistrationClient.OPENCODE:
-            config_home = os.environ.get("XDG_CONFIG_HOME")
-            root = Path(config_home) if config_home is not None else Path.home() / ".config"
-            return root / "opencode" / "opencode.json"
-        case RegistrationClient.CLAUDE_DESKTOP:
-            if sys.platform == "win32":
-                appdata = os.environ.get("APPDATA")
-                if appdata is None:
-                    raise ClientConfigError(
-                        path=Path.home(),
-                        detail="APPDATA is unavailable; pass --config explicitly",
-                    )
-                return Path(appdata) / "Claude" / "claude_desktop_config.json"
-            if sys.platform == "darwin":
-                return (
-                    Path.home()
-                    / "Library"
-                    / "Application Support"
-                    / "Claude"
-                    / "claude_desktop_config.json"
-                )
-            return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+    return CONFIG_PATH_RESOLVERS[client]()
+
+
+def _opencode_config_path() -> Path:
+    root = _absolute_environment_path("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return root / "opencode" / "opencode.json"
+
+
+def _claude_desktop_config_path() -> Path:
+    if sys.platform == "win32":
+        return _windows_claude_desktop_config_path()
+    if sys.platform == "darwin":
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "Claude"
+            / "claude_desktop_config.json"
+        )
+    return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+
+
+def _windows_claude_desktop_config_path() -> Path:
+    appdata = _absolute_environment_path("APPDATA")
+    if appdata is None:
+        raise ClientConfigError(
+            path=Path.home(),
+            detail="APPDATA is unavailable or invalid; pass --config explicitly",
+        )
+    return appdata / "Claude" / "claude_desktop_config.json"
+
+
+def _absolute_environment_path(name: str) -> Path | None:
+    configured = os.environ.get(name)
+    if not configured:
+        return None
+    candidate = Path(configured)
+    return candidate if candidate.is_absolute() else None
+
+
+CONFIG_PATH_RESOLVERS: Final[Mapping[RegistrationClient, Callable[[], Path]]] = MappingProxyType(
+    {
+        RegistrationClient.OPENCODE: _opencode_config_path,
+        RegistrationClient.CLAUDE_DESKTOP: _claude_desktop_config_path,
+    }
+)
+
+
+def _opencode_server_entry(executable: Path) -> JsonObject:
+    return {
+        "type": "local",
+        "command": [str(executable), "-m", "stt_mcp.server"],
+        "enabled": True,
+    }
+
+
+def _claude_desktop_server_entry(executable: Path) -> JsonObject:
+    return {
+        "command": str(executable),
+        "args": ["-m", "stt_mcp.server"],
+    }
+
+
+SERVER_ENTRY_BUILDERS: Final[Mapping[RegistrationClient, Callable[[Path], JsonObject]]] = (
+    MappingProxyType(
+        {
+            RegistrationClient.OPENCODE: _opencode_server_entry,
+            RegistrationClient.CLAUDE_DESKTOP: _claude_desktop_server_entry,
+        }
+    )
+)
 
 
 def register_client(
@@ -80,44 +137,39 @@ def register_client(
     executable: Path,
 ) -> None:
     """Create or replace only STT-MCP's entry in a client configuration."""
-    with _locked_config(config_path):
-        document = _read_config(config_path)
-        match client:
-            case RegistrationClient.OPENCODE:
-                servers = _read_section(document, "mcp", config_path)
-                servers[SERVER_NAME] = {
-                    "type": "local",
-                    "command": [str(executable), "-m", "stt_mcp.server"],
-                    "enabled": True,
-                }
-                document["mcp"] = servers
-            case RegistrationClient.CLAUDE_DESKTOP:
-                servers = _read_section(document, "mcpServers", config_path)
-                servers[SERVER_NAME] = {
-                    "command": str(executable),
-                    "args": ["-m", "stt_mcp.server"],
-                }
-                document["mcpServers"] = servers
-        _publish_config(config_path, document)
+    target_path = _config_target(config_path)
+    with _locked_config(target_path):
+        document = _read_config(target_path)
+        section_name = CLIENT_SECTION_NAMES[client]
+        servers = _read_section(document, section_name, target_path)
+        servers[SERVER_NAME] = SERVER_ENTRY_BUILDERS[client](executable)
+        document[section_name] = servers
+        _publish_config(target_path, document)
 
 
 def unregister_client(*, client: RegistrationClient, config_path: Path) -> bool:
     """Remove only STT-MCP's entry and report whether one existed."""
-    with _locked_config(config_path):
-        if not config_path.exists():
+    target_path = _config_target(config_path)
+    with _locked_config(target_path):
+        if not target_path.exists():
             return False
-        document = _read_config(config_path)
-        match client:
-            case RegistrationClient.OPENCODE:
-                section_name = "mcp"
-            case RegistrationClient.CLAUDE_DESKTOP:
-                section_name = "mcpServers"
-        servers = _read_section(document, section_name, config_path)
+        document = _read_config(target_path)
+        section_name = CLIENT_SECTION_NAMES[client]
+        servers = _read_section(document, section_name, target_path)
         if servers.pop(SERVER_NAME, None) is None:
             return False
         document[section_name] = servers
-        _publish_config(config_path, document)
+        _publish_config(target_path, document)
         return True
+
+
+def _config_target(path: Path) -> Path:
+    if not path.is_symlink():
+        return path
+    try:
+        return path.resolve(strict=False)
+    except (OSError, RuntimeError) as error:
+        raise ClientConfigError(path=path, detail=str(error)) from error
 
 
 def _read_config(path: Path) -> JsonObject:
