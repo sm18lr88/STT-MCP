@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Ruff check
+        entry: uv run ruff check
+        language: system
+        require_serial: true
+        types_or: [python, pyi]
