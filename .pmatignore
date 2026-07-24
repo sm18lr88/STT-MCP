@@ -1,0 +1,11 @@
+/.artifacts/
+/.basedpyright/
+/.mypy_cache/
+/.omo/
+/.pytest_cache/
+/.ruff_cache/
+/.solidkg/
+/.venv/
+/build/
+/dist/
+/**/__pycache__/

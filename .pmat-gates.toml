@@ -1,0 +1,10 @@
+# PMAT's configurable gate runner is Rust-oriented, so Python checks remain in the Makefile.
+[gates]
+run_clippy = false
+clippy_strict = false
+run_tests = false
+test_timeout = 300
+check_coverage = false
+min_coverage = 80.0
+check_complexity = true
+max_complexity = 10
