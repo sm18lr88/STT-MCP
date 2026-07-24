@@ -6,15 +6,25 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Final, Self, override
+from types import MappingProxyType
+from typing import TYPE_CHECKING, ClassVar, Final, Self, override
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from stt_mcp.backend import Backend, ParakeetDevice
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 CONFIG_FILENAME: Final = "config.json"
 CONFIG_PATH_ENVIRONMENT_VARIABLE: Final = "STT_MCP_CONFIG"
+INVALID_BACKEND_SETTINGS_DETAIL: Final[Mapping[Backend, str]] = MappingProxyType(
+    {
+        Backend.GRANITE: "Granite configuration cannot include Parakeet settings",
+        Backend.PARAKEET: "Parakeet configuration requires executable, model, and device",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,16 +59,10 @@ class RuntimeConfig(BaseModel):
     @model_validator(mode="after")
     def validate_backend_settings(self) -> Self:
         """Reject settings that do not match the selected backend."""
-        match self.backend:
-            case Backend.GRANITE:
-                if self.parakeet is not None:
-                    msg = "Granite configuration cannot include Parakeet settings"
-                    raise ValueError(msg)
-            case Backend.PARAKEET:
-                if self.parakeet is None:
-                    msg = "Parakeet configuration requires executable, model, and device"
-                    raise ValueError(msg)
-        return self
+        settings_match = (self.backend is Backend.PARAKEET) == (self.parakeet is not None)
+        if settings_match:
+            return self
+        raise ValueError(INVALID_BACKEND_SETTINGS_DETAIL[self.backend])
 
     def required_parakeet_settings(self) -> ParakeetSettings:
         """Return settings guaranteed by a validated Parakeet selection."""
@@ -83,10 +87,21 @@ class ConfigurationInvariantError(Exception):
 def default_config_path() -> Path:
     """Return the per-user STT-MCP configuration path."""
     if sys.platform == "win32":
-        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        root = _absolute_environment_path(
+            "LOCALAPPDATA",
+            fallback=Path.home() / "AppData" / "Local",
+        )
     else:
-        root = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        root = _absolute_environment_path("XDG_CONFIG_HOME", fallback=Path.home() / ".config")
     return root / "stt-mcp" / CONFIG_FILENAME
+
+
+def _absolute_environment_path(name: str, *, fallback: Path) -> Path:
+    configured = os.environ.get(name)
+    if not configured:
+        return fallback
+    candidate = Path(configured)
+    return candidate if candidate.is_absolute() else fallback
 
 
 def runtime_config_path() -> Path:

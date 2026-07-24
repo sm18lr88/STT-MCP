@@ -121,9 +121,16 @@ def _nvidia_free_vram_bytes() -> tuple[int, ...]:
     executable = shutil.which("nvidia-smi")
     if executable is None:
         return ()
+    completed = _query_nvidia_smi(executable)
+    if completed is None or completed.returncode != 0:
+        return ()
+    return _parse_free_vram(completed.stdout)
+
+
+def _query_nvidia_smi(executable: str) -> subprocess.CompletedProcess[str] | None:
     creation_flags = WINDOWS_CREATE_NO_WINDOW if os.name == "nt" else 0
     try:
-        completed = subprocess.run(  # noqa: S603 - executable comes from shutil.which
+        return subprocess.run(  # noqa: S603 - executable comes from shutil.which
             [
                 executable,
                 "--query-gpu=memory.free",
@@ -136,13 +143,21 @@ def _nvidia_free_vram_bytes() -> tuple[int, ...]:
             creationflags=creation_flags,
         )
     except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _parse_free_vram(output: str) -> tuple[int, ...]:
+    rows = tuple(line.strip() for line in output.splitlines())
+    if not rows or any(not row for row in rows):
         return ()
-    if completed.returncode != 0:
+    free_vram_mib = _integer_rows(rows)
+    if free_vram_mib is None:
         return ()
-    free_vram_mib: list[int] = []
-    for line in completed.stdout.splitlines():
-        try:
-            free_vram_mib.append(int(line.strip()))
-        except ValueError:
-            continue
     return tuple(value * MEBIBYTE_BYTES for value in free_vram_mib)
+
+
+def _integer_rows(rows: tuple[str, ...]) -> tuple[int, ...] | None:
+    try:
+        return tuple(int(row) for row in rows)
+    except ValueError:
+        return None
