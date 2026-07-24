@@ -5,9 +5,13 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
-from typing import Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
 
 from stt_mcp.contracts import ArtifactFormat, TranscriptDocument, TranscriptJsonPayload
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
 
 WINDOW_SECONDS: Final = 30.0
 
@@ -36,25 +40,23 @@ def plan_source_windows(*, duration_seconds: float) -> tuple[SourceWindow, ...]:
 
 def render_transcript(document: TranscriptDocument, artifact_format: ArtifactFormat) -> str:
     """Render one transcript artifact without publishing it."""
-    match artifact_format:
-        case ArtifactFormat.TEXT:
-            return f"{document.text}\n"
-        case ArtifactFormat.MARKDOWN:
-            return _render_markdown(document)
-        case ArtifactFormat.JSON:
-            payload = TranscriptJsonPayload(
-                source_path=document.source_path,
-                backend=document.backend,
-                duration_seconds=document.duration_seconds,
-                timing_quality=document.timing_quality,
-                segments=document.segments,
-                text=document.text,
-            )
-            return f"{json.dumps(payload.model_dump(mode='json'), ensure_ascii=False, indent=2)}\n"
-        case ArtifactFormat.SRT:
-            return _render_srt(document)
-        case ArtifactFormat.VTT:
-            return _render_vtt(document)
+    return TRANSCRIPT_RENDERERS[artifact_format](document)
+
+
+def _render_text(document: TranscriptDocument) -> str:
+    return f"{document.text}\n"
+
+
+def _render_json(document: TranscriptDocument) -> str:
+    payload = TranscriptJsonPayload(
+        source_path=document.source_path,
+        backend=document.backend,
+        duration_seconds=document.duration_seconds,
+        timing_quality=document.timing_quality,
+        segments=document.segments,
+        text=document.text,
+    )
+    return f"{json.dumps(payload.model_dump(mode='json'), ensure_ascii=False, indent=2)}\n"
 
 
 def _render_markdown(document: TranscriptDocument) -> str:
@@ -110,6 +112,19 @@ def _render_vtt(document: TranscriptDocument) -> str:
     header = "WEBVTT\n\nNOTE Timing is coarse source-window timing, not word timing."
     body = "\n\n".join(cues)
     return f"{header}\n\n{body}\n"
+
+
+TRANSCRIPT_RENDERERS: Final[Mapping[ArtifactFormat, Callable[[TranscriptDocument], str]]] = (
+    MappingProxyType(
+        {
+            ArtifactFormat.TEXT: _render_text,
+            ArtifactFormat.MARKDOWN: _render_markdown,
+            ArtifactFormat.JSON: _render_json,
+            ArtifactFormat.SRT: _render_srt,
+            ArtifactFormat.VTT: _render_vtt,
+        }
+    )
+)
 
 
 def _format_timestamp(seconds: float, *, separator: str) -> str:

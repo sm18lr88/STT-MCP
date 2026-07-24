@@ -61,6 +61,29 @@ def test_json_output_declares_coarse_timing_quality(tmp_path: Path) -> None:
     assert payload.text == "First Second Third"
 
 
+def test_text_output_ends_with_one_newline(tmp_path: Path) -> None:
+    # Given
+    document = _document(tmp_path / "source.mp4")
+
+    # When
+    rendered = render_transcript(document, ArtifactFormat.TEXT)
+
+    # Then
+    assert rendered == "First Second Third\n"
+
+
+def test_markdown_output_names_source_and_windows(tmp_path: Path) -> None:
+    # Given
+    document = _document(tmp_path / "source.mp4")
+
+    # When
+    rendered = render_transcript(document, ArtifactFormat.MARKDOWN)
+
+    # Then
+    assert rendered.startswith("# Transcript: source.mp4\n")
+    assert "## 00:00:00.000 - 00:00:30.000" in rendered
+
+
 def test_srt_output_uses_monotonic_source_window_cues(tmp_path: Path) -> None:
     # Given
     document = _document(tmp_path / "source.mp4")
