@@ -5,6 +5,18 @@ Let your AI agents understand audio and video. Normalizes audio with FFMPEG -> t
 Chosen backend implementation depends on your hardware, and your agent will help you choose: Parakeet or Granite.
 That selection is persisted for both the CLI and MCP server.
 
+## Table of contents
+
+- [Backends](#backends)
+- [Installation](#installation)
+- [Transcribe from the CLI](#transcribe-from-the-cli)
+- [Use as an MCP server](#use-as-an-mcp-server)
+- [Operational behavior](#operational-behavior)
+- [Contributor and backend verification](#contributor-and-backend-verification)
+- [Contributing](#contributing)
+- [License](#license)
+- [Uninstall](#uninstall)
+
 ## Backends
 
 | Backend  | Best for                                             | Runtime                                                     |
@@ -15,7 +27,7 @@ That selection is persisted for both the CLI and MCP server.
 Windows x86-64 is verified with Parakeet CPU and Granite CUDA SDPA. Linux, WSL2, Intel macOS, and
 Apple Silicon paths are implemented but remain runtime-unverified. Containers are unsupported.
 
-## Quick start
+## Installation
 
 The recommended installation path is to point your coding agent at the authoritative runbook.
 Copy and paste this instruction into your agent:
@@ -146,6 +158,42 @@ $env:STT_MCP_TEST_MEDIA = (Resolve-Path "D:\path\to\speech.wav").Path
 uv run pytest tests/test_mcp_acceptance.py -q -s
 Remove-Item Env:STT_MCP_TEST_MEDIA
 ```
+
+Where GNU Make is available, local convenience targets mirror those commands without replacing the
+authoritative runbook. On Windows systems without Make, run the direct `uv` commands above.
+
+```console
+make test-fast
+make lint
+make test
+make coverage
+make build
+make pmat
+```
+
+Install the fast Ruff pre-commit checks with `make hooks`. PMAT dead-code analysis should target
+`src`; its Python analyzer reports decorated Typer commands, Pydantic validators, Protocol members,
+and interface properties as medium-confidence dead code even though those entry points are live.
+
+Hosted CI/CD is intentionally not configured. Backend setup and acceptance depend on the user's
+hardware, a user-confirmed backend, exact local model assets, and a real speech sample, so the setup
+agent executes the runbook on the target computer.
+
+## Contributing
+
+Keep changes focused, use `uv` exclusively, and run the full local quality gates before handing work
+off (`make quality` where GNU Make is available). Changes to setup, backend selection, CUDA policy,
+model pins, or client registration must also follow
+[`docs/SETUP.md`](docs/SETUP.md) and complete the applicable real CLI and MCP acceptance steps.
+
+Do not weaken Granite's fail-closed GPU checks, introduce runtime model downloads, or claim an
+unverified platform/backend pair works.
+
+## License
+
+This repository does not currently declare a project license. Do not redistribute its source until
+the project owner adds one. Parakeet runtime and model assets retain their separate upstream license
+and attribution requirements described in [`docs/SETUP.md`](docs/SETUP.md#4-install-parakeet).
 
 ## Uninstall
 
