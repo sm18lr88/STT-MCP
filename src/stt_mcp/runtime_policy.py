@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, override
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final, override
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 SUPPORTED_MACHINES: Final = frozenset({"amd64", "x86_64"})
 
@@ -21,6 +25,14 @@ class AttentionImplementation(StrEnum):
 
     SDPA = "sdpa"
     FLASH_ATTENTION_2 = "flash_attention_2"
+
+
+PLATFORM_ATTENTION: Final[Mapping[RuntimePlatform, AttentionImplementation]] = MappingProxyType(
+    {
+        RuntimePlatform.WINDOWS: AttentionImplementation.SDPA,
+        RuntimePlatform.LINUX: AttentionImplementation.FLASH_ATTENTION_2,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,24 +58,19 @@ class UnsupportedRuntimeError(Exception):
 
 def select_runtime(*, platform: str, machine: str) -> RuntimePlan:
     """Select the supported attention backend for a host."""
-    try:
-        runtime_platform = RuntimePlatform(platform)
-    except ValueError as error:
-        raise UnsupportedRuntimeError(platform=platform, machine=machine) from error
-
+    runtime_platform = _runtime_platform(platform=platform, machine=machine)
     if machine.casefold() not in SUPPORTED_MACHINES:
         raise UnsupportedRuntimeError(platform=platform, machine=machine)
+    attention = PLATFORM_ATTENTION[runtime_platform]
+    return RuntimePlan(
+        platform=runtime_platform,
+        attention=attention,
+        requires_flash_attention=attention is AttentionImplementation.FLASH_ATTENTION_2,
+    )
 
-    match runtime_platform:
-        case RuntimePlatform.WINDOWS:
-            return RuntimePlan(
-                platform=runtime_platform,
-                attention=AttentionImplementation.SDPA,
-                requires_flash_attention=False,
-            )
-        case RuntimePlatform.LINUX:
-            return RuntimePlan(
-                platform=runtime_platform,
-                attention=AttentionImplementation.FLASH_ATTENTION_2,
-                requires_flash_attention=True,
-            )
+
+def _runtime_platform(*, platform: str, machine: str) -> RuntimePlatform:
+    try:
+        return RuntimePlatform(platform)
+    except ValueError as error:
+        raise UnsupportedRuntimeError(platform=platform, machine=machine) from error
