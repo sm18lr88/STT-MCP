@@ -1,6 +1,6 @@
 # STT-MCP
 
-Let your AI agents understand audio and video. Normalizes audio with FFMPEG -> translates -> cleans up after itself.
+Let your AI agents understand audio files, and audio within video. Normalizes audio with FFMPEG -> translates -> cleans up after itself.
 
 Chosen backend implementation depends on your hardware, and your agent will help you choose: Parakeet or Granite.
 That selection is persisted for both the CLI and MCP server.
