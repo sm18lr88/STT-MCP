@@ -191,9 +191,9 @@ unverified platform/backend pair works.
 
 ## License
 
-This repository does not currently declare a project license. Do not redistribute its source until
-the project owner adds one. Parakeet runtime and model assets retain their separate upstream license
-and attribution requirements described in [`docs/SETUP.md`](docs/SETUP.md#4-install-parakeet).
+This project is licensed under the [MIT License](LICENSE). Parakeet runtime and model assets retain
+their separate upstream license and attribution requirements described in
+[`docs/SETUP.md`](docs/SETUP.md#4-install-parakeet).
 
 ## Uninstall
 

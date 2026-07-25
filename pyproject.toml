@@ -3,6 +3,7 @@ name = "stt-mcp"
 version = "0.1.0"
 description = "Local speech-to-text MCP server powered by Granite Speech or parakeet.cpp"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "anyio==4.14.2",
