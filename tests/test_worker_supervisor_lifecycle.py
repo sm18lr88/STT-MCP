@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import anyio
 import pytest
 
+import stt_mcp.supervisor as supervisor_module
 from stt_mcp.media import NormalizedChunk
 from stt_mcp.runtime_policy import select_runtime
 from stt_mcp.supervisor import WorkerBusyError, WorkerFailureError, WorkerSupervisor
@@ -78,6 +79,10 @@ async def test_start_cancellation_closes_partially_initialized_worker(
         await anyio.sleep_forever()
         raise AssertionError
 
+    def fake_ensure_cuda_capacity() -> None:
+        return
+
+    monkeypatch.setattr(supervisor_module, "ensure_cuda_capacity", fake_ensure_cuda_capacity)
     monkeypatch.setattr(WorkerSupervisor, "_open_process", fake_open_process)
     monkeypatch.setattr(WorkerSupervisor, "_send", fake_send)
     monkeypatch.setattr(WorkerSupervisor, "_receive", fake_receive)
