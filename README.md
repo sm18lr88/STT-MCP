@@ -122,9 +122,23 @@ transcribe(
   output_directory?: string,
   formats?: ("txt" | "md" | "json" | "srt" | "vtt")[]
 )
+
+start_transcription(
+  job_id: UUID,
+  source_path: string,
+  output_directory?: string,
+  formats?: ("txt" | "md" | "json" | "srt" | "vtt")[]
+)
+
+get_transcription_status(job_id: UUID)
+cancel_transcription(job_id: UUID)
 ```
 
 Omitting `output_directory` writes beside the source. Omitting `formats` publishes every format.
+Use `start_transcription` for long media, then poll `get_transcription_status` with the same
+caller-generated UUID. Repeating `start_transcription` with the same UUID and inputs is idempotent;
+reusing it with different inputs is rejected. Completed, failed, and cancelled jobs retain their
+terminal result or error for later status calls during the server process lifetime.
 
 ## Operational behavior
 
