@@ -18,6 +18,7 @@ from typing import (
 )
 
 import torch
+from torch.nn import functional
 from transformers import AutoModel, AutoProcessor
 
 if TYPE_CHECKING:
@@ -29,6 +30,7 @@ MODEL_ID: Final = "ibm-granite/granite-speech-4.1-2b-nar"
 MODEL_REVISION: Final = "99a4df9007ac5682f9daa093fb7008ff606e9a5d"
 EXPECTED_SAMPLE_RATE: Final = 16_000
 PCM16_SAMPLE_WIDTH: Final = 2
+MINIMUM_WAVEFORM_SAMPLES: Final = 320
 
 
 class GraniteInputs(TypedDict):
@@ -125,6 +127,11 @@ class GraniteTranscriber:
     def transcribe(self, audio_path: Path) -> str:
         """Transcribe one normalized 16 kHz mono WAV file."""
         waveform = _load_pcm16_mono(audio_path)
+        if waveform.shape[0] < MINIMUM_WAVEFORM_SAMPLES:
+            waveform = functional.pad(
+                waveform,
+                (0, MINIMUM_WAVEFORM_SAMPLES - waveform.shape[0]),
+            )
         inputs = self._processor([waveform], device=self._device)
         with torch.inference_mode():
             output = self._model.transcribe(
