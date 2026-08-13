@@ -7,7 +7,12 @@ import pytest
 
 from stt_mcp.backend import AudioChunk, Backend, TranscriptionBusyError
 from stt_mcp.contracts import ArtifactFormat
-from stt_mcp.service import TranscriptionResult, TranscriptionService
+from stt_mcp.service import (
+    ProgressReporter,
+    TranscriptionRequest,
+    TranscriptionResult,
+    TranscriptionService,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,14 +47,13 @@ async def test_service_rejects_concurrent_request_without_waiting(
 
     async def fake_transcribe_owned(
         _service: TranscriptionService,
-        *,
-        source_path: Path,
-        output_directory: Path,
-        formats: tuple[ArtifactFormat, ...],
+        request: TranscriptionRequest,
+        progress: ProgressReporter | None,
     ) -> TranscriptionResult:
-        assert source_path == tmp_path / "speech.wav"
-        assert output_directory == tmp_path
-        assert formats == (ArtifactFormat.TEXT,)
+        assert request.source_path == tmp_path / "speech.wav"
+        assert request.output_directory == tmp_path
+        assert request.formats == (ArtifactFormat.TEXT,)
+        assert progress is None
         entered.set()
         await release.wait()
         return expected
@@ -57,9 +61,11 @@ async def test_service_rejects_concurrent_request_without_waiting(
     async def run_first_request() -> None:
         results.append(
             await service.transcribe(
-                source_path=tmp_path / "speech.wav",
-                output_directory=tmp_path,
-                formats=(ArtifactFormat.TEXT,),
+                TranscriptionRequest(
+                    source_path=tmp_path / "speech.wav",
+                    output_directory=tmp_path,
+                    formats=(ArtifactFormat.TEXT,),
+                )
             )
         )
 
@@ -70,9 +76,11 @@ async def test_service_rejects_concurrent_request_without_waiting(
         await entered.wait()
         with pytest.raises(TranscriptionBusyError):
             _ = await service.transcribe(
-                source_path=tmp_path / "speech.wav",
-                output_directory=tmp_path,
-                formats=(ArtifactFormat.TEXT,),
+                TranscriptionRequest(
+                    source_path=tmp_path / "speech.wav",
+                    output_directory=tmp_path,
+                    formats=(ArtifactFormat.TEXT,),
+                )
             )
         release.set()
 

@@ -23,7 +23,7 @@ from stt_mcp.registration import (
     unregister_client as unregister_mcp_client,
 )
 from stt_mcp.server import main as run_server
-from stt_mcp.service import TranscriptionResult, TranscriptionService
+from stt_mcp.service import TranscriptionRequest, TranscriptionResult, TranscriptionService
 from stt_mcp.setup_cli import setup_app
 
 app = typer.Typer(no_args_is_help=True)
@@ -54,9 +54,11 @@ async def _transcribe(
     engine = create_configured_engine()
     try:
         return await TranscriptionService(engine).transcribe(
-            source_path=source,
-            output_directory=output_directory,
-            formats=formats,
+            TranscriptionRequest(
+                source_path=source,
+                output_directory=output_directory,
+                formats=formats,
+            )
         )
     finally:
         await engine.aclose()

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import ClassVar, final
+from typing import ClassVar, Protocol, final
 
 import anyio
 from pydantic import BaseModel, ConfigDict
@@ -19,6 +20,30 @@ from stt_mcp.contracts import (
     TranscriptSegment,
 )
 from stt_mcp.media import normalize_media
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptionRequest:
+    """Canonical inputs for one transcription operation."""
+
+    source_path: Path
+    output_directory: Path
+    formats: tuple[ArtifactFormat, ...]
+
+
+class ProgressReporter(Protocol):
+    """Receive durable transcription progress snapshots."""
+
+    async def __call__(
+        self,
+        phase: str,
+        completed_chunks: int,
+        total_chunks: int | None,
+        message: str,
+        /,
+    ) -> None:
+        """Store one progress update."""
+        ...
 
 
 class TranscriptionResult(BaseModel):
@@ -40,10 +65,8 @@ class TranscriptionService:
 
     async def transcribe(
         self,
-        *,
-        source_path: Path,
-        output_directory: Path,
-        formats: tuple[ArtifactFormat, ...],
+        request: TranscriptionRequest,
+        progress: ProgressReporter | None = None,
     ) -> TranscriptionResult:
         """Transcribe one media file and publish all requested artifacts."""
         try:
@@ -52,29 +75,32 @@ class TranscriptionService:
             raise TranscriptionBusyError from None
         try:
             return await self._transcribe_owned(
-                source_path=source_path,
-                output_directory=output_directory,
-                formats=formats,
+                request=request,
+                progress=progress,
             )
         finally:
             self._request_lock.release()
 
     async def _transcribe_owned(
         self,
-        *,
-        source_path: Path,
-        output_directory: Path,
-        formats: tuple[ArtifactFormat, ...],
+        request: TranscriptionRequest,
+        progress: ProgressReporter | None,
     ) -> TranscriptionResult:
+        if progress is not None:
+            await progress("starting_engine", 0, None, "Starting speech engine")
         await self._engine.start()
+        if progress is not None:
+            await progress("normalizing", 0, None, "Normalizing source media")
         with TemporaryDirectory(prefix="stt-mcp-") as temporary_directory:
             chunks = await normalize_media(
-                source_path=source_path,
+                source_path=request.source_path,
                 output_directory=Path(temporary_directory),
             )
             segment_list: list[TranscriptSegment] = []
+            if progress is not None:
+                await progress("transcribing", 0, len(chunks), "Transcribing audio chunks")
             for chunk in chunks:
-                segment_list.append(  # noqa: PERF401 - inference must remain sequential
+                segment_list.append(
                     TranscriptSegment(
                         index=chunk.index,
                         start_seconds=chunk.start_seconds,
@@ -82,17 +108,31 @@ class TranscriptionService:
                         text=await self._engine.transcribe(chunk),
                     )
                 )
+                if progress is not None:
+                    await progress(
+                        "transcribing",
+                        chunk.index + 1,
+                        len(chunks),
+                        "Transcribing audio chunks",
+                    )
             segments = tuple(segment_list)
         document = TranscriptDocument(
-            source_path=source_path,
+            source_path=request.source_path,
             backend=self._engine.backend,
             duration_seconds=chunks[-1].end_seconds,
             timing_quality=TimingQuality.COARSE_SOURCE_WINDOW,
             segments=segments,
         )
+        if progress is not None:
+            await progress(
+                "publishing",
+                len(chunks),
+                len(chunks),
+                "Publishing transcript artifacts",
+            )
         artifacts = publish_artifacts(
             document=document,
-            formats=formats,
-            output_directory=output_directory,
+            formats=request.formats,
+            output_directory=request.output_directory,
         )
         return TranscriptionResult(document=document, artifacts=artifacts)
