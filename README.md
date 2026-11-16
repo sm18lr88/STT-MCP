@@ -2,8 +2,8 @@
 
 Let your AI agents understand audio files, and audio within video. Normalizes audio with FFMPEG -> translates -> cleans up after itself.
 
-Chosen backend implementation depends on your hardware, and your agent will help you choose: Parakeet or Granite.
-That selection is persisted for both the CLI and MCP server.
+Which backend runs depends on your hardware: Parakeet or Granite. Your agent will help you choose.
+The selection is persisted for both the CLI and MCP server.
 
 ## Table of contents
 
@@ -29,7 +29,7 @@ Apple Silicon paths are implemented but remain runtime-unverified. Containers ar
 
 ## Installation
 
-The recommended installation path is to point your coding agent at the authoritative runbook.
+The recommended way to install is to point your coding agent at the authoritative runbook.
 Copy and paste this instruction into your agent:
 
 > Read [`docs/SETUP.md`](docs/SETUP.md) from top to bottom. Inspect my hardware, show me the
@@ -37,8 +37,8 @@ Copy and paste this instruction into your agent:
 > runbook to install, configure, and verify STT-MCP. Do not silently choose a backend or skip the
 > real speech acceptance test.
 
-The agent must pause for your backend confirmation before installing backend-specific assets. If
-you prefer a manual installation, follow the same runbook directly. Before continuing, install:
+The agent must pause for your backend confirmation before it installs backend-specific assets. If
+you prefer a manual installation, follow the same runbook directly. Before you continue, install:
 
 - [uv](https://docs.astral.sh/uv/) with managed CPython 3.13;
 - `ffmpeg` and `ffprobe` on `PATH`;
@@ -56,7 +56,7 @@ uv sync --python 3.13 --locked
 uv run stt-mcp setup inspect
 ```
 
-Review the JSON recommendation, then confirm the backend before installing or configuring it.
+Review the JSON recommendation, then confirm the backend before you install or configure it.
 `setup inspect` never changes configuration.
 
 ### Granite
@@ -97,7 +97,7 @@ uv run stt-mcp transcribe "/path/to/media.mp4" --output "/path/to/transcripts" -
 ```
 
 JSON output includes the effective `backend`. Subtitle timing is coarse 30-second source-window
-timing for consistent behavior across both backends.
+timing, so both backends behave the same way.
 
 ## Use as an MCP server
 
@@ -134,11 +134,12 @@ get_transcription_status(job_id: UUID)
 cancel_transcription(job_id: UUID)
 ```
 
-Omitting `output_directory` writes beside the source. Omitting `formats` publishes every format.
-Use `start_transcription` for long media, then poll `get_transcription_status` with the same
-caller-generated UUID. Repeating `start_transcription` with the same UUID and inputs is idempotent;
-reusing it with different inputs is rejected. Completed, failed, and cancelled jobs retain their
-terminal result or error for later status calls during the server process lifetime.
+If you omit `output_directory`, the output is written beside the source. If you omit `formats`, every
+format is published. For long media, use `start_transcription`, then poll
+`get_transcription_status` with the same caller-generated UUID. Repeating `start_transcription` with
+the same UUID and inputs is idempotent; reusing the UUID with different inputs is rejected.
+Completed, failed, and cancelled jobs keep their terminal result or error for later status calls
+during the server process lifetime.
 
 ## Operational behavior
 
@@ -186,16 +187,16 @@ make pmat
 ```
 
 Install the fast Ruff pre-commit checks with `make hooks`. PMAT dead-code analysis should target
-`src`; its Python analyzer reports decorated Typer commands, Pydantic validators, Protocol members,
-and interface properties as medium-confidence dead code even though those entry points are live.
+`src`. Its Python analyzer reports decorated Typer commands, Pydantic validators, Protocol members,
+and interface properties as medium-confidence dead code, even though those entry points are live.
 
 Hosted CI/CD is intentionally not configured. Backend setup and acceptance depend on the user's
 hardware, a user-confirmed backend, exact local model assets, and a real speech sample, so the setup
-agent executes the runbook on the target computer.
+agent runs the runbook on the target computer.
 
 ## Contributing
 
-Keep changes focused, use `uv` exclusively, and run the full local quality gates before handing work
+Keep changes focused, use `uv` exclusively, and run the full local quality gates before you hand work
 off (`make quality` where GNU Make is available). Changes to setup, backend selection, CUDA policy,
 model pins, or client registration must also follow
 [`docs/SETUP.md`](docs/SETUP.md) and complete the applicable real CLI and MCP acceptance steps.
@@ -205,8 +206,8 @@ unverified platform/backend pair works.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). Parakeet runtime and model assets retain
-their separate upstream license and attribution requirements described in
+This project is licensed under the [MIT License](LICENSE). Parakeet runtime and model assets keep
+their separate upstream license and attribution requirements, described in
 [`docs/SETUP.md`](docs/SETUP.md#4-install-parakeet).
 
 ## Uninstall
